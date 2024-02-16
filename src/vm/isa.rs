@@ -236,20 +236,26 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 return Some(ISAErr::TypeMismatch);
             }
         }
-        Inst::LoadH(reg, addr) => match memory.heap_segment.get(addr) {
-            Some(HeapObj::R(val)) => core.set_reg(reg, *val),
-            None => {
-                memory
-                    .heap_segment
-                    .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
-                core.set_reg(reg, RegType::Usize(0));
+        Inst::LoadH(reg_v, reg_a) => {
+            if let RegType::Usize(addr) = core.get_reg(reg_a) {
+                match memory.heap_segment.get(addr) {
+                    Some(HeapObj::R(val)) => core.set_reg(reg_v, *val),
+                    None => {
+                        memory
+                            .heap_segment
+                            .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
+                        core.set_reg(reg_v, RegType::Usize(0));
+                    }
+                }
+            } else {
+                return Some(ISAErr::InvalidReg);
             }
-        },
-        Inst::LoadS(reg1, reg2) => {
-            if let RegType::Usize(i) = core.get_reg(reg2) {
+        }
+        Inst::LoadS(reg_v, reg_a) => {
+            if let RegType::Usize(i) = core.get_reg(reg_a) {
                 let addr = core.get_bp() as StackAddr + i as StackAddr;
                 if let Some(val) = memory.stack_segment.get(addr) {
-                    core.set_reg(reg1, *val);
+                    core.set_reg(reg_v, *val);
                 } else {
                     return Some(ISAErr::InvalidStackAddr);
                 }
@@ -269,14 +275,19 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 return Some(ISAErr::InvalidReg);
             }
         }
-        Inst::StoreH(reg, addr) => {
-            if let Some(slot) = memory.heap_segment.get_mut(addr) {
-                *slot = HeapObj::R(core.get_reg(reg))
+        Inst::StoreH(reg_v,reg_a) => {
+            if let RegType::Usize(addr) = core.get_reg(reg_a) {
+                match memory.heap_segment.get_mut(addr) {
+                    Some(HeapObj::R(val)) => *val = core.get_reg(reg_v),
+                    None => {
+                        memory
+                            .heap_segment
+                            .resize(addr + 1, HeapObj::R(core.get_reg(reg_v)));
+                        memory.heap_segment[addr] = HeapObj::R(core.get_reg(reg_v));
+                    }
+                }
             } else {
-                memory
-                    .heap_segment
-                    .resize(addr + 1, HeapObj::R(core.get_reg(reg)));
-                memory.heap_segment[addr] = HeapObj::R(core.get_reg(reg));
+                return Some(ISAErr::InvalidReg);
             }
         }
         Inst::Jo(reg) => {

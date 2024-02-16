@@ -2,8 +2,13 @@ use crate::vm::memory::stack::StackAddr;
 use crate::vm::memory::CodeAddr;
 use demo_isa::isa::{Reg, RegType};
 
+#[derive(Debug, Clone, PartialEq,Eq)]
+enum Reg0 {
+    Zero=0,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Regs {
+    r0:Reg0,
     r1: RegType,
     r2: RegType,
     r3: RegType,
@@ -32,6 +37,7 @@ impl Default for Regs {
 impl Regs {
     pub fn new() -> Self {
         Regs {
+            r0: Reg0::Zero,
             r1: RegType::Usize(0),
             r2: RegType::Usize(0),
             r3: RegType::Usize(0),
