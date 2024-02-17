@@ -1,7 +1,6 @@
-use demo_isa::isa::ISAErr;
-use demo_isa::isa::Inst::Nop;
-use demo_vm::vm::cpu::CpuErr;
-use demo_vm::vm::Vm;
+use demo_isa::err::{CpuErr, ISAErr};
+use demo_isa::Inst::Nop;
+use demo_vm::Vm;
 extern crate alloc;
 
 fn main() {
@@ -10,7 +9,7 @@ fn main() {
     let mut v = Vm::new();
     let code = vec![Nop];
 
-    v.mem.push_code_vec(code);
+    v.push_code(code);
 
     match v.start() {
         Ok(_) => {}
@@ -21,7 +20,7 @@ fn main() {
             CpuErr::ISAErr(err) => {
                 if err == ISAErr::Halt {
                     println!("Halt");
-                    println!("Memory {:?}", v.mem.load());
+                    println!("Memory {:?}", v.mem_load());
                 } else {
                     println!("ISAErr {:?}", err);
                 }

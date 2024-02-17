@@ -1,27 +1,18 @@
-use crate::vm::isa::ISARuner;
-use crate::vm::reg::Regs;
-use crate::vm::Memory;
-use demo_isa::isa::ISAErr;
-use enumflags2::{bitflags, make_bitflags, BitFlags};
+mod core;
+
+use crate::memory::Memory;
+use core::Regs;
+use demo_isa::err::CpuErr;
+use demo_isa::reg::Flags;
+use demo_isa::{ISARuner, MemoryRuner};
+use enumflags2::{make_bitflags, BitFlags};
 #[cfg(debug_assertions)]
 use log::debug;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CpuErr {
-    InvalidCodeAddr,
-    ISAErr(ISAErr),
-}
-
-#[bitflags]
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Flags {
-    Overflow,
-}
 #[derive(Debug)]
 pub struct CpuCore {
-    pub(crate) regs: Regs,
-    pub(crate) flags: BitFlags<Flags>,
+    pub regs: Regs,
+    pub flags: BitFlags<Flags>,
 }
 impl Default for CpuCore {
     fn default() -> Self {
@@ -39,16 +30,14 @@ impl CpuCore {
     pub fn start(&mut self, mem: &mut Memory) -> Result<(), CpuErr> {
         loop {
             let pc = self.regs.get_pc();
-            let inst = mem.fetch_code(pc);
+            let inst = mem.fetch_code(pc)?;
             #[cfg(debug_assertions)]
             {
                 debug!("pc: {:?}, inst: {:?}", pc, inst);
                 debug!("regs: {:?}", self.regs);
             }
             self.regs.set_pc(pc + 1);
-            if let Some(err) = self.run_inst(inst?, mem) {
-                return Err(CpuErr::ISAErr(err));
-            }
+            self.run_inst(inst, mem)?;
         }
     }
 }

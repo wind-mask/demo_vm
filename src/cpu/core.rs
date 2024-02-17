@@ -1,23 +1,11 @@
-use crate::vm::cpu::{CpuCore, Flags};
-use crate::vm::memory::heap::HeapObj;
-use crate::vm::memory::stack::StackAddr;
-use crate::vm::memory::{CodeAddr, Memory};
-use demo_isa::isa::{ISAErr, Inst, Reg, RegType};
+use crate::cpu::CpuCore;
+use demo_isa::err::ISAErr;
+use demo_isa::reg::{Flags, Reg};
+use demo_isa::{CodeAddr, ISARuner, Inst, MemoryRuner, RegType, StackAddr};
 use enumflags2::{make_bitflags, BitFlags};
 
-pub trait ISARuner {
-    fn run_inst(&mut self, inst: Inst, mem: &mut Memory) -> Option<ISAErr>;
-    fn get_reg(&self, reg: Reg) -> RegType;
-    fn set_reg(&mut self, reg: Reg, val: RegType);
-    fn get_pc(&self) -> CodeAddr;
-    fn set_pc(&mut self, pc: CodeAddr);
-    fn get_bp(&self) -> StackAddr;
-    fn set_bp(&mut self, bp: usize);
-    fn get_flags(&self) -> BitFlags<Flags>;
-    fn set_flags(&mut self, flags: BitFlags<Flags>);
-}
 impl ISARuner for CpuCore {
-    fn run_inst(&mut self, inst: Inst, mem: &mut Memory) -> Option<ISAErr> {
+    fn run_inst(&mut self, inst: Inst, mem: &mut impl MemoryRuner) -> Result<(), ISAErr> {
         run(self, inst, mem)
     }
     fn get_reg(&self, reg: Reg) -> RegType {
@@ -46,7 +34,11 @@ impl ISARuner for CpuCore {
     }
 }
 
-fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAErr> {
+pub(crate) fn run(
+    core: &mut impl ISARuner,
+    inst: Inst,
+    memory: &mut impl MemoryRuner,
+) -> Result<(), ISAErr> {
     match inst {
         Inst::Nop => {}
         Inst::M(reg, i) => core.set_reg(reg, i),
@@ -57,7 +49,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             match (r2, r3) {
                 (RegType::Usize(i2), RegType::Usize(i3)) => {
                     if i3 == 0 {
-                        return Some(ISAErr::DivByZero);
+                        return Err(ISAErr::DivByZero);
                     }
                     if let (i, false) = i2.overflowing_rem(i3) {
                         core.set_reg(reg1, RegType::Usize(i))
@@ -65,7 +57,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                         core.set_flags(make_bitflags!(Flags::{Overflow}));
                     }
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::AddU(reg1, reg2, reg3) => {
@@ -79,7 +71,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                         core.set_flags(make_bitflags!(Flags::{Overflow}));
                     }
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::AddD(reg1, reg2, reg3) => {
@@ -87,7 +79,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             let r3 = core.get_reg(reg3);
             match (r2, r3) {
                 (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 + f3)),
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::SubU(reg1, reg2, reg3) => {
@@ -101,7 +93,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                         core.set_flags(make_bitflags!(Flags::{Overflow}));
                     }
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::SubD(reg1, reg2, reg3) => {
@@ -109,7 +101,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             let r3 = core.get_reg(reg3);
             match (r2, r3) {
                 (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 - f3)),
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::MulU(reg1, reg2, reg3) => {
@@ -123,7 +115,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                         core.set_flags(make_bitflags!(Flags::{Overflow}));
                     }
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::MulD(reg1, reg2, reg3) => {
@@ -131,7 +123,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             let r3 = core.get_reg(reg3);
             match (r2, r3) {
                 (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 * f3)),
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::DivU(reg1, reg2, reg3) => {
@@ -140,7 +132,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             match (r2, r3) {
                 (RegType::Usize(i2), RegType::Usize(i3)) => {
                     if i3 == 0 {
-                        return Some(ISAErr::DivByZero);
+                        return Err(ISAErr::DivByZero);
                     }
                     if let (i, false) = i2.overflowing_div(i3) {
                         core.set_reg(reg1, RegType::Usize(i))
@@ -148,7 +140,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                         core.set_flags(make_bitflags!(Flags::{Overflow}));
                     }
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::DivD(reg1, reg2, reg3) => {
@@ -157,11 +149,11 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             match (r2, r3) {
                 (RegType::F64(f2), RegType::F64(f3)) => {
                     if f3 == 0.0 {
-                        return Some(ISAErr::DivByZero);
+                        return Err(ISAErr::DivByZero);
                     }
                     core.set_reg(reg1, RegType::F64(f2 / f3))
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::And(reg1, reg2, reg3) => {
@@ -171,7 +163,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 (RegType::Usize(i2), RegType::Usize(i3)) => {
                     core.set_reg(reg1, RegType::Usize(i2 & i3))
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::Or(reg1, reg2, reg3) => {
@@ -181,7 +173,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 (RegType::Usize(i2), RegType::Usize(i3)) => {
                     core.set_reg(reg1, RegType::Usize(i2 | i3))
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::Xor(reg1, reg2, reg3) => {
@@ -191,14 +183,14 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 (RegType::Usize(i2), RegType::Usize(i3)) => {
                     core.set_reg(reg1, RegType::Usize(i2 ^ i3))
                 }
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::Not(reg1, reg2) => {
             let r2 = core.get_reg(reg2);
             match r2 {
                 RegType::Usize(i2) => core.set_reg(reg1, RegType::Usize(!i2)),
-                _ => return Some(ISAErr::TypeMismatch),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
         Inst::Neg(reg1, reg2) => {
@@ -222,7 +214,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                     core.set_flags(make_bitflags!(Flags::{Overflow}));
                 }
             } else {
-                return Some(ISAErr::TypeMismatch);
+                return Err(ISAErr::TypeMismatch);
             }
         }
         Inst::Shr(reg1, reg2) => {
@@ -233,61 +225,35 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                     core.set_flags(make_bitflags!(Flags::{Overflow}));
                 }
             } else {
-                return Some(ISAErr::TypeMismatch);
+                return Err(ISAErr::TypeMismatch);
             }
         }
         Inst::LoadH(reg_v, reg_a) => {
             if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                match memory.heap_segment.get(addr) {
-                    Some(HeapObj::R(val)) => core.set_reg(reg_v, *val),
-                    None => {
-                        memory
-                            .heap_segment
-                            .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
-                        core.set_reg(reg_v, RegType::Usize(0));
-                    }
-                }
+                core.set_reg(reg_v, memory.get_heap(addr));
             } else {
-                return Some(ISAErr::InvalidReg);
+                return Err(ISAErr::InvalidReg);
             }
         }
         Inst::LoadS(reg_v, reg_a) => {
-            if let RegType::Usize(i) = core.get_reg(reg_a) {
-                let addr = core.get_bp() as StackAddr + i as StackAddr;
-                if let Some(val) = memory.stack_segment.get(addr) {
-                    core.set_reg(reg_v, *val);
-                } else {
-                    return Some(ISAErr::InvalidStackAddr);
-                }
-            } else {
-                return Some(ISAErr::InvalidReg);
-            }
-        }
-        Inst::StoreS(reg1, reg2) => {
-            if let RegType::Usize(i) = core.get_reg(reg2) {
-                let addr = core.get_bp() as StackAddr + i as StackAddr;
-                if let Some(val) = memory.stack_segment.get_mut(addr) {
-                    *val = core.get_reg(reg1);
-                } else {
-                    return Some(ISAErr::InvalidStackAddr);
-                }
-            } else {
-                return Some(ISAErr::InvalidReg);
-            }
-        }
-        Inst::StoreH(reg_v,reg_a) => {
             if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                match memory.heap_segment.get_mut(addr) {
-                    Some(HeapObj::R(val)) => *val = core.get_reg(reg_v),
-                    None => {
-                        memory
-                            .heap_segment
-                            .resize(addr + 1, HeapObj::R(core.get_reg(reg_v)));
-                        memory.heap_segment[addr] = HeapObj::R(core.get_reg(reg_v));
-                    }
-                }
+                core.set_reg(reg_v, memory.get_stack(core.get_bp(), addr)?);
             } else {
-                return Some(ISAErr::InvalidReg);
+                return Err(ISAErr::InvalidReg);
+            }
+        }
+        Inst::StoreS(reg_v, reg_a) => {
+            if let RegType::Usize(addr) = core.get_reg(reg_a) {
+                memory.set_stack(core.get_bp(), addr, core.get_reg(reg_v))?;
+            } else {
+                return Err(ISAErr::InvalidReg);
+            }
+        }
+        Inst::StoreH(reg_v, reg_a) => {
+            if let RegType::Usize(addr) = core.get_reg(reg_a) {
+                memory.set_heap(addr, core.get_reg(reg_v));
+            } else {
+                return Err(ISAErr::InvalidReg);
             }
         }
         Inst::Jo(reg) => {
@@ -295,7 +261,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 if let RegType::Usize(addr) = core.get_reg(reg) {
                     core.set_pc(addr as CodeAddr);
                 } else {
-                    return Some(ISAErr::InvalidReg);
+                    return Err(ISAErr::InvalidReg);
                 }
             }
         }
@@ -304,7 +270,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 if let RegType::Usize(addr) = core.get_reg(reg) {
                     core.set_pc(addr as CodeAddr);
                 } else {
-                    return Some(ISAErr::InvalidReg);
+                    return Err(ISAErr::InvalidReg);
                 }
             }
         }
@@ -315,7 +281,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 if let RegType::Usize(addr) = core.get_reg(reg3) {
                     core.set_pc(addr as CodeAddr);
                 } else {
-                    return Some(ISAErr::InvalidReg);
+                    return Err(ISAErr::InvalidReg);
                 }
             }
         }
@@ -326,7 +292,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 if let RegType::Usize(addr) = core.get_reg(reg3) {
                     core.set_pc(addr as CodeAddr);
                 } else {
-                    return Some(ISAErr::InvalidReg);
+                    return Err(ISAErr::InvalidReg);
                 }
             }
         }
@@ -336,7 +302,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                 let addr = core.get_reg(reg2);
                 match addr {
                     RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                    _ => return Some(ISAErr::InvalidReg),
+                    _ => return Err(ISAErr::InvalidReg),
                 }
             }
         }
@@ -348,7 +314,7 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
                     let addr = core.get_reg(reg2);
                     match addr {
                         RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                        _ => return Some(ISAErr::InvalidReg),
+                        _ => return Err(ISAErr::InvalidReg),
                     }
                 }
             }
@@ -357,45 +323,144 @@ fn run(core: &mut dyn ISARuner, inst: Inst, memory: &mut Memory) -> Option<ISAEr
             let val = core.get_reg(reg);
             match val {
                 RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                _ => return Some(ISAErr::InvalidReg),
+                _ => return Err(ISAErr::InvalidReg),
             }
         }
         Inst::Push(reg) => {
-            let val = core.get_reg(reg);
-            memory.stack_segment.push(val);
+            memory.push_stack(core.get_reg(reg));
         }
         Inst::Pop(reg) => {
-            let val = memory.stack_segment.pop();
-            match val {
-                Some(val) => core.set_reg(reg, val),
-                None => return Some(ISAErr::InvalidStackAddr),
-            }
+            core.set_reg(reg, memory.pop_stack()?);
         }
         Inst::Call(reg) => {
             if let RegType::Usize(addr) = core.get_reg(reg) {
-                memory.stack_segment.push(RegType::Usize(core.get_bp()));
-                memory.stack_segment.push(RegType::Usize(core.get_pc()));
-                core.set_bp(memory.stack_segment.len() - 1 as StackAddr);
+                memory.push_stack(RegType::Usize(core.get_bp()));
+                memory.push_stack(RegType::Usize(core.get_pc()));
+                core.set_bp(memory.get_stack_top_addr());
                 core.set_pc(addr as CodeAddr);
             } else {
-                return Some(ISAErr::InvalidReg);
+                return Err(ISAErr::InvalidReg);
             }
         }
         Inst::Ret => {
-            memory
-                .stack_segment
-                .resize(core.get_bp() + 1, RegType::Usize(0));
-            let pc = memory.stack_segment.pop();
-            let bp = memory.stack_segment.pop();
+            memory.drop_stack_bp(core.get_bp());
+            let pc = memory.pop_stack()?;
+            let bp = memory.pop_stack()?;
             match (pc, bp) {
-                (Some(RegType::Usize(pc)), Some(RegType::Usize(bp))) => {
+                (RegType::Usize(pc), RegType::Usize(bp)) => {
                     core.set_pc(pc as CodeAddr);
                     core.set_bp(bp as StackAddr);
                 }
-                _ => return Some(ISAErr::InvalidStackAddr),
+                _ => return Err(ISAErr::TypeMismatch),
             }
         }
-        Inst::Halt => return Some(ISAErr::Halt),
+        Inst::Halt => return Err(ISAErr::Halt),
     }
-    None
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Regs {
+    r1: RegType,
+    r2: RegType,
+    r3: RegType,
+    r4: RegType,
+    r5: RegType,
+    r6: RegType,
+    r7: RegType,
+    r8: RegType,
+    r9: RegType,
+    r10: RegType,
+    r11: RegType,
+    r12: RegType,
+    r13: RegType,
+    r14: RegType,
+    r15: RegType,
+    r16: RegType,
+    pc: CodeAddr,
+    bp: StackAddr,
+}
+
+impl Default for Regs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Regs {
+    pub fn new() -> Self {
+        Regs {
+            r1: RegType::Usize(0),
+            r2: RegType::Usize(0),
+            r3: RegType::Usize(0),
+            r4: RegType::Usize(0),
+            r5: RegType::Usize(0),
+            r6: RegType::Usize(0),
+            r7: RegType::Usize(0),
+            r8: RegType::Usize(0),
+            r9: RegType::Usize(0),
+            r10: RegType::Usize(0),
+            r11: RegType::Usize(0),
+            r12: RegType::Usize(0),
+            r13: RegType::Usize(0),
+            r14: RegType::Usize(0),
+            r15: RegType::Usize(0),
+            r16: RegType::Usize(0),
+
+            pc: 0,
+            bp: 0,
+        }
+    }
+    pub fn get_reg(&self, reg: Reg) -> RegType {
+        match reg {
+            Reg::R1 => self.r1,
+            Reg::R2 => self.r2,
+            Reg::R3 => self.r3,
+            Reg::R4 => self.r4,
+            Reg::R5 => self.r5,
+            Reg::R6 => self.r6,
+            Reg::R7 => self.r7,
+            Reg::R8 => self.r8,
+            Reg::R9 => self.r9,
+            Reg::R10 => self.r10,
+            Reg::R11 => self.r11,
+            Reg::R12 => self.r12,
+            Reg::R13 => self.r13,
+            Reg::R14 => self.r14,
+            Reg::R15 => self.r15,
+            Reg::R16 => self.r16,
+        }
+    }
+    pub fn set_reg(&mut self, reg: Reg, val: RegType) {
+        match reg {
+            Reg::R1 => self.r1 = val,
+            Reg::R2 => self.r2 = val,
+            Reg::R3 => self.r3 = val,
+            Reg::R4 => self.r4 = val,
+            Reg::R5 => self.r5 = val,
+            Reg::R6 => self.r6 = val,
+            Reg::R7 => self.r7 = val,
+            Reg::R8 => self.r8 = val,
+            Reg::R9 => self.r9 = val,
+            Reg::R10 => self.r10 = val,
+            Reg::R11 => self.r11 = val,
+            Reg::R12 => self.r12 = val,
+            Reg::R13 => self.r13 = val,
+            Reg::R14 => self.r14 = val,
+            Reg::R15 => self.r15 = val,
+            Reg::R16 => self.r16 = val,
+        }
+    }
+    pub fn get_bp(&self) -> StackAddr {
+        self.bp
+    }
+    pub fn set_bp(&mut self, bp: StackAddr) {
+        self.bp = bp;
+    }
+    pub fn get_pc(&self) -> CodeAddr {
+        self.pc
+    }
+    pub fn set_pc(&mut self, pc: CodeAddr) {
+        self.pc = pc;
+    }
 }
