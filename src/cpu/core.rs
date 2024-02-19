@@ -3,7 +3,7 @@ use crate::memory::Memory;
 use crate::sys_call::SYS_CALL_TABLE;
 
 use demo_isa::err::ISAErr;
-use demo_isa::reg::{Flags, Reg};
+use demo_isa::reg::{F64Reg, F64RegType, Flags, UsizeReg, UsizeRegType};
 use demo_isa::{CodeAddr, ISARuner, Inst, MemoryRuner, RegType, StackAddr};
 use enumflags2::{make_bitflags, BitFlags};
 
@@ -12,12 +12,25 @@ impl ISARuner for CpuCore {
     fn run_inst(&mut self, inst: Inst, mem: &mut Self::M) -> Result<(), ISAErr> {
         run(self, inst, mem)
     }
-    fn get_reg(&self, reg: Reg) -> RegType {
-        self.regs.get_reg(reg)
+    fn get_u_reg(&self, ur: UsizeReg) -> UsizeRegType {
+        self.regs.get_u_reg(ur)
     }
-    fn set_reg(&mut self, reg: Reg, val: RegType) {
-        self.regs.set_reg(reg, val);
+    fn get_mut_u_reg(&mut self, reg: UsizeReg) -> &mut UsizeRegType {
+        self.regs.get_mut_u_reg(reg)
     }
+    fn get_f_reg(&self, fr: F64Reg) -> F64RegType {
+        self.regs.get_f_reg(fr)
+    }
+    fn get_mut_f_reg(&mut self, reg: F64Reg) -> &mut F64RegType {
+        self.regs.get_mut_f_reg(reg)
+    }
+    fn set_u_reg(&mut self, ur: UsizeReg, val: UsizeRegType) {
+        self.regs.set_u_reg(ur, val);
+    }
+    fn set_f_reg(&mut self, fr: F64Reg, val: F64RegType) {
+        self.regs.set_f_reg(fr, val);
+    }
+
     fn get_pc(&self) -> CodeAddr {
         self.regs.get_pc()
     }
@@ -37,310 +50,223 @@ impl ISARuner for CpuCore {
         self.flags = flags;
     }
 }
-//TODO:寄存器类型优化
 pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result<(), ISAErr> {
     match inst {
         Inst::Nop => {}
-        Inst::M(reg, i) => core.set_reg(reg, i),
-        Inst::Mov(reg1, reg2) => core.set_reg(reg1, core.get_reg(reg2)),
-        Inst::Mod(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    if i3 == 0 {
-                        return Err(ISAErr::DivByZero);
-                    }
-                    if let (i, false) = i2.overflowing_rem(i3) {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                _ => return Err(ISAErr::TypeMismatch),
+        Inst::MU(reg, val) => core.set_u_reg(reg, val),
+        Inst::MD(reg, val) => core.set_f_reg(reg, val),
+        Inst::MovU(dr, sr) => core.set_u_reg(dr, core.get_u_reg(sr)),
+        Inst::MovD(dr, sr) => core.set_f_reg(dr, core.get_f_reg(sr)),
+        Inst::Mod(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            if r2 == 0 {
+                return Err(ISAErr::DivByZero);
+            }
+            core.set_u_reg(dur, r1 % r2);
+        }
+        Inst::AddU(dur, sur1, sur2) => {
+            if let (i, false) = core.get_u_reg(sur1).overflowing_add(core.get_u_reg(sur2)) {
+                core.set_u_reg(dur, i)
+            } else {
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::AddU(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    if let (i, false) = i2.overflowing_add(i3) {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                _ => return Err(ISAErr::TypeMismatch),
+        Inst::AddUI(reg, val) => {
+            let r = core.get_mut_u_reg(reg);
+            if let (i, false) = r.overflowing_add(val) {
+                *r = i;
+            } else {
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::AddD(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 + f3)),
-                _ => return Err(ISAErr::TypeMismatch),
+        Inst::AddD(dfr1, sfr1, sfr2) => {
+            let r1 = core.get_f_reg(sfr1);
+            let r2 = core.get_f_reg(sfr2);
+            core.set_f_reg(dfr1, r1 + r2);
+        }
+        Inst::AddDI(reg, val) => {
+            let r = core.get_mut_f_reg(reg);
+            *r += val;
+        }
+        Inst::SubU(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            if let (i, false) = r1.overflowing_sub(core.get_u_reg(sur2)) {
+                core.set_u_reg(dur, i)
+            } else {
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::SubU(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    if let (i, false) = i2.overflowing_sub(i3) {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                _ => return Err(ISAErr::TypeMismatch),
+        Inst::SubUI(reg, val) => {
+            let r = core.get_mut_u_reg(reg);
+            if let (i, false) = r.overflowing_sub(val) {
+                *r = i;
+            } else {
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
         Inst::SubD(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 - f3)),
-                _ => return Err(ISAErr::TypeMismatch),
-            }
+            let r1 = core.get_f_reg(reg2);
+            let r2 = core.get_f_reg(reg3);
+            core.set_f_reg(reg1, r1 - r2);
         }
-        Inst::MulU(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    if let (i, false) = i2.overflowing_mul(i3) {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
+        Inst::SubDI(reg, val) => {
+            let r = core.get_mut_f_reg(reg);
+            *r -= val;
         }
-        Inst::MulD(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::F64(f2), RegType::F64(f3)) => core.set_reg(reg1, RegType::F64(f2 * f3)),
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::DivU(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    if i3 == 0 {
-                        return Err(ISAErr::DivByZero);
-                    }
-                    if let (i, false) = i2.overflowing_div(i3) {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::DivD(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::F64(f2), RegType::F64(f3)) => {
-                    if f3 == 0.0 {
-                        return Err(ISAErr::DivByZero);
-                    }
-                    core.set_reg(reg1, RegType::F64(f2 / f3))
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::And(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    core.set_reg(reg1, RegType::Usize(i2 & i3))
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::Or(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    core.set_reg(reg1, RegType::Usize(i2 | i3))
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::Xor(reg1, reg2, reg3) => {
-            let r2 = core.get_reg(reg2);
-            let r3 = core.get_reg(reg3);
-            match (r2, r3) {
-                (RegType::Usize(i2), RegType::Usize(i3)) => {
-                    core.set_reg(reg1, RegType::Usize(i2 ^ i3))
-                }
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::Not(reg1, reg2) => {
-            let r2 = core.get_reg(reg2);
-            match r2 {
-                RegType::Usize(i2) => core.set_reg(reg1, RegType::Usize(!i2)),
-                _ => return Err(ISAErr::TypeMismatch),
-            }
-        }
-        Inst::Neg(reg1, reg2) => {
-            let r2 = core.get_reg(reg2);
-            match r2 {
-                RegType::Usize(i2) => {
-                    if let (i, false) = i2.overflowing_neg() {
-                        core.set_reg(reg1, RegType::Usize(i))
-                    } else {
-                        core.set_flags(make_bitflags!(Flags::{Overflow}));
-                    }
-                }
-                RegType::F64(f2) => core.set_reg(reg1, RegType::F64(-f2)),
-            }
-        }
-        Inst::Shl(reg1, reg2) => {
-            if let RegType::Usize(i2) = core.get_reg(reg2) {
-                if let (i, false) = i2.overflowing_shl(i2 as u32) {
-                    core.set_reg(reg1, RegType::Usize(i))
-                } else {
-                    core.set_flags(make_bitflags!(Flags::{Overflow}));
-                }
+        Inst::MulU(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            if let (i, false) = r1.overflowing_mul(r2) {
+                core.set_u_reg(dur, i)
             } else {
-                return Err(ISAErr::TypeMismatch);
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::Shr(reg1, reg2) => {
-            if let RegType::Usize(i2) = core.get_reg(reg2) {
-                if let (i, false) = i2.overflowing_shr(i2 as u32) {
-                    core.set_reg(reg1, RegType::Usize(i))
-                } else {
-                    core.set_flags(make_bitflags!(Flags::{Overflow}));
-                }
+        Inst::MulD(dfr, sfr1, sfr2) => {
+            let r1 = core.get_f_reg(sfr1);
+            let r2 = core.get_f_reg(sfr2);
+            core.set_f_reg(dfr, r1 * r2);
+        }
+        Inst::DivU(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            if r2 == 0 {
+                return Err(ISAErr::DivByZero);
+            }
+            core.set_u_reg(dur, r1 / r2);
+        }
+        Inst::DivD(dfr, sfr1, sfr2) => {
+            let r1 = core.get_f_reg(sfr1);
+            let r2 = core.get_f_reg(sfr2);
+            core.set_f_reg(dfr, r1 / r2);
+        }
+        Inst::And(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            core.set_u_reg(dur, r1 & r2);
+        }
+        Inst::Or(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            core.set_u_reg(dur, r1 | r2);
+        }
+        Inst::Xor(dur, sur1, sur2) => {
+            let r1 = core.get_u_reg(sur1);
+            let r2 = core.get_u_reg(sur2);
+            core.set_u_reg(dur, r1 ^ r2);
+        }
+        Inst::Not(dur, sur) => {
+            let r = core.get_u_reg(sur);
+            core.set_u_reg(dur, !r);
+        }
+        Inst::NegU(dur, sur) => {
+            let r = core.get_u_reg(sur);
+            if let (i, false) = r.overflowing_neg() {
+                core.set_u_reg(dur, i)
             } else {
-                return Err(ISAErr::TypeMismatch);
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::LoadH(reg_v, reg_a) => {
-            if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                core.set_reg(reg_v, memory.get_heap(addr));
+        Inst::NegD(dfr, sfr) => {
+            let r = core.get_f_reg(sfr);
+            core.set_f_reg(dfr, -r);
+        }
+        Inst::Shl(dur, sur) => {
+            let r = core.get_u_reg(sur);
+            if let (i, false) = r.overflowing_shl(1) {
+                core.set_u_reg(dur, i)
             } else {
-                return Err(ISAErr::InvalidReg);
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::LoadS(reg_v, reg_a) => {
-            if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                core.set_reg(reg_v, memory.get_stack(core.get_bp(), addr)?);
+        Inst::Shr(dur, sur) => {
+            let r = core.get_u_reg(sur);
+            if let (i, false) = r.overflowing_shr(1) {
+                core.set_u_reg(dur, i)
             } else {
-                return Err(ISAErr::InvalidReg);
+                core.set_flags(make_bitflags!(Flags::{Overflow}));
             }
         }
-        Inst::StoreS(reg_v, reg_a) => {
-            if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                memory.set_stack(core.get_bp(), addr, core.get_reg(reg_v))?;
-            } else {
-                return Err(ISAErr::InvalidReg);
-            }
+        Inst::LoadUH(reg_v, reg_a) => {
+            core.set_u_reg(reg_v, memory.get_heap_u_type(core.get_u_reg(reg_a))?)
         }
-        Inst::StoreH(reg_v, reg_a) => {
-            if let RegType::Usize(addr) = core.get_reg(reg_a) {
-                memory.set_heap(addr, core.get_reg(reg_v));
-            } else {
-                return Err(ISAErr::InvalidReg);
-            }
+        Inst::LoadDH(reg_v, reg_a) => {
+            core.set_f_reg(reg_v, memory.get_heap_f_type(core.get_u_reg(reg_a))?)
         }
-        Inst::Jo(reg) => {
+        Inst::StoreUH(reg_v, reg_a) => {
+            memory.set_heap(core.get_u_reg(reg_a), RegType::Usize(core.get_u_reg(reg_v)));
+        }
+        Inst::StoreDH(reg_v, reg_a) => {
+            memory.set_heap(core.get_u_reg(reg_a), RegType::F64(core.get_f_reg(reg_v)));
+        }
+        Inst::Jo(addr_reg) => {
             if core.get_flags().contains(Flags::Overflow) {
-                if let RegType::Usize(addr) = core.get_reg(reg) {
-                    core.set_pc(addr as CodeAddr);
-                } else {
-                    return Err(ISAErr::InvalidReg);
-                }
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
-        Inst::Jno(reg) => {
+        Inst::Jno(addr_reg) => {
             if !core.get_flags().contains(Flags::Overflow) {
-                if let RegType::Usize(addr) = core.get_reg(reg) {
-                    core.set_pc(addr as CodeAddr);
-                } else {
-                    return Err(ISAErr::InvalidReg);
-                }
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
-        Inst::Je(reg1, reg2, reg3) => {
-            let val1 = core.get_reg(reg1);
-            let val2 = core.get_reg(reg2);
+        Inst::Je(addr_reg, vreg1, vreg2) => {
+            let val1 = core.get_u_reg(vreg1);
+            let val2 = core.get_u_reg(vreg2);
             if val1 == val2 {
-                if let RegType::Usize(addr) = core.get_reg(reg3) {
-                    core.set_pc(addr as CodeAddr);
-                } else {
-                    return Err(ISAErr::InvalidReg);
-                }
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
-        Inst::Jne(reg1, reg2, reg3) => {
-            let val1 = core.get_reg(reg1);
-            let val2 = core.get_reg(reg2);
+        Inst::Jne(addr_reg, vreg1, vreg2) => {
+            let val1 = core.get_u_reg(vreg1);
+            let val2 = core.get_u_reg(vreg2);
             if val1 != val2 {
-                if let RegType::Usize(addr) = core.get_reg(reg3) {
-                    core.set_pc(addr as CodeAddr);
-                } else {
-                    return Err(ISAErr::InvalidReg);
-                }
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
-        Inst::Jz(reg1, reg2) => {
-            let val = core.get_reg(reg1);
-            if let RegType::Usize(0) = val {
-                let addr = core.get_reg(reg2);
-                match addr {
-                    RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                    _ => return Err(ISAErr::InvalidReg),
-                }
+        Inst::Jz(addr_reg, vreg) => {
+            let val = core.get_u_reg(vreg);
+            if val == 0 {
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
-        Inst::Jnz(reg1, reg2) => {
-            let val = core.get_reg(reg1);
-            match val {
-                RegType::Usize(0) => {}
-                _ => {
-                    let addr = core.get_reg(reg2);
-                    match addr {
-                        RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                        _ => return Err(ISAErr::InvalidReg),
-                    }
-                }
+        Inst::Jnz(addr_reg, vreg) => {
+            let val = core.get_u_reg(vreg);
+            if val != 0 {
+                core.set_pc(core.get_u_reg(addr_reg))
             }
         }
         Inst::Jmp(reg) => {
-            let val = core.get_reg(reg);
-            match val {
-                RegType::Usize(addr) => core.set_pc(addr as CodeAddr),
-                _ => return Err(ISAErr::InvalidReg),
-            }
+            core.set_pc(core.get_u_reg(reg));
         }
-        Inst::Push(reg) => {
-            memory.push_stack(core.get_reg(reg));
+        Inst::PushU(ureg) => {
+            memory.push_stack(RegType::Usize(core.get_u_reg(ureg)));
         }
-        Inst::Pop(reg) => {
-            core.set_reg(reg, memory.pop_stack()?);
+        Inst::PushD(freg) => {
+            memory.push_stack(RegType::F64(core.get_f_reg(freg)));
         }
-        Inst::Call(reg) => {
-            if let RegType::Usize(addr) = core.get_reg(reg) {
-                memory.push_stack(RegType::Usize(core.get_bp()));
-                memory.push_stack(RegType::Usize(core.get_pc()));
-                core.set_bp(memory.get_stack_top_addr());
-                core.set_pc(addr as CodeAddr);
+        Inst::PopU(ureg) => {
+            let v = memory.pop_stack()?;
+            if let RegType::Usize(v) = v {
+                core.set_u_reg(ureg, v);
             } else {
-                return Err(ISAErr::InvalidReg);
+                return Err(ISAErr::TypeMismatch);
             }
+        }
+        Inst::PopD(freg) => {
+            let v = memory.pop_stack()?;
+            if let RegType::F64(v) = v {
+                core.set_f_reg(freg, v);
+            } else {
+                return Err(ISAErr::TypeMismatch);
+            }
+        }
+        Inst::Call(ureg) => {
+            let addr = core.get_u_reg(ureg);
+            memory.push_stack(RegType::Usize(core.get_bp()));
+            memory.push_stack(RegType::Usize(core.get_pc()));
+            core.set_bp(memory.get_stack_top_addr());
+            core.set_pc(addr as CodeAddr);
         }
         Inst::Ret => {
             memory.drop_stack_bp(core.get_bp());
@@ -355,41 +281,69 @@ pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result
             }
         }
         Inst::Halt => return Err(ISAErr::Halt),
-        Inst::SysCall(reg) => {
-            if let RegType::Usize(sys_call) = core.get_reg(reg) {
-                if let Some(sys_call) = SYS_CALL_TABLE.get(sys_call) {
-                    sys_call(core, memory)?;
-                } else {
-                    return Err(ISAErr::InvalidSysCall);
-                }
+        Inst::SysCall(ureg) => {
+            let sys_call = core.get_u_reg(ureg);
+            if let Some(sys_call) = SYS_CALL_TABLE.get(sys_call) {
+                sys_call(core, memory)?;
             } else {
-                return Err(ISAErr::InvalidReg);
+                return Err(ISAErr::InvalidSysCall);
             }
         }
-        Inst::In(_, _) => todo!(),  //TODO:实现In
-        Inst::Out(_, _) => todo!(), //TODO:实现Out
+
+        Inst::LoadUS(reg_v, reg_a) => {
+            if let RegType::Usize(u) = memory.get_stack(core.get_bp(), core.get_u_reg(reg_a))? {
+                core.set_u_reg(reg_v, u);
+            } else {
+                return Err(ISAErr::TypeMismatch);
+            }
+        }
+        Inst::StoreUS(reg_v, reg_a) => {
+            memory.set_stack(
+                core.get_bp(),
+                core.get_u_reg(reg_a),
+                RegType::Usize(core.get_u_reg(reg_v)),
+            )?;
+        }
+        Inst::LoadDS(reg_v, reg_a) => {
+            if let RegType::F64(f) = memory.get_stack(core.get_bp(), core.get_u_reg(reg_a))? {
+                core.set_f_reg(reg_v, f);
+            } else {
+                return Err(ISAErr::TypeMismatch);
+            }
+        }
+        Inst::StoreDS(reg_v, reg_a) => {
+            memory.set_stack(
+                core.get_bp(),
+                core.get_u_reg(reg_a),
+                RegType::F64(core.get_f_reg(reg_v)),
+            )?;
+        }
+        Inst::InD(_, _) => todo!(),
+        Inst::OutD(_, _) => todo!(), //TODO:实现Out
+        Inst::InU(_, _) => todo!(),  //TODO:实现In
+        Inst::OutU(_, _) => todo!(),
     }
     Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Regs {
-    r1: RegType,
-    r2: RegType,
-    r3: RegType,
-    r4: RegType,
-    r5: RegType,
-    r6: RegType,
-    r7: RegType,
-    r8: RegType,
-    r9: RegType,
-    r10: RegType,
-    r11: RegType,
-    r12: RegType,
-    r13: RegType,
-    r14: RegType,
-    r15: RegType,
-    r16: RegType,
+    u1: UsizeRegType,
+    u2: UsizeRegType,
+    u3: UsizeRegType,
+    u4: UsizeRegType,
+    u5: UsizeRegType,
+    u6: UsizeRegType,
+    u7: UsizeRegType,
+    u8: UsizeRegType,
+    f1: F64RegType,
+    f2: F64RegType,
+    f3: F64RegType,
+    f4: F64RegType,
+    f5: F64RegType,
+    f6: F64RegType,
+    f7: F64RegType,
+    f8: F64RegType,
     pc: CodeAddr,
     bp: StackAddr,
 }
@@ -403,65 +357,96 @@ impl Default for Regs {
 impl Regs {
     pub fn new() -> Self {
         Regs {
-            r1: RegType::Usize(0),
-            r2: RegType::Usize(0),
-            r3: RegType::Usize(0),
-            r4: RegType::Usize(0),
-            r5: RegType::Usize(0),
-            r6: RegType::Usize(0),
-            r7: RegType::Usize(0),
-            r8: RegType::Usize(0),
-            r9: RegType::Usize(0),
-            r10: RegType::Usize(0),
-            r11: RegType::Usize(0),
-            r12: RegType::Usize(0),
-            r13: RegType::Usize(0),
-            r14: RegType::Usize(0),
-            r15: RegType::Usize(0),
-            r16: RegType::Usize(0),
-
+            u1: 0,
+            u2: 0,
+            u3: 0,
+            u4: 0,
+            u5: 0,
+            u6: 0,
+            u7: 0,
+            u8: 0,
+            f1: 0.0,
+            f2: 0.0,
+            f3: 0.0,
+            f4: 0.0,
+            f5: 0.0,
+            f6: 0.0,
+            f7: 0.0,
+            f8: 0.0,
             pc: 0,
             bp: 0,
         }
     }
-    pub fn get_reg(&self, reg: Reg) -> RegType {
+    pub fn get_u_reg(&self, reg: UsizeReg) -> UsizeRegType {
         match reg {
-            Reg::R1 => self.r1,
-            Reg::R2 => self.r2,
-            Reg::R3 => self.r3,
-            Reg::R4 => self.r4,
-            Reg::R5 => self.r5,
-            Reg::R6 => self.r6,
-            Reg::R7 => self.r7,
-            Reg::R8 => self.r8,
-            Reg::R9 => self.r9,
-            Reg::R10 => self.r10,
-            Reg::R11 => self.r11,
-            Reg::R12 => self.r12,
-            Reg::R13 => self.r13,
-            Reg::R14 => self.r14,
-            Reg::R15 => self.r15,
-            Reg::R16 => self.r16,
+            UsizeReg::U1 => self.u1,
+            UsizeReg::U2 => self.u2,
+            UsizeReg::U3 => self.u3,
+            UsizeReg::U4 => self.u4,
+            UsizeReg::U5 => self.u5,
+            UsizeReg::U6 => self.u6,
+            UsizeReg::U7 => self.u7,
+            UsizeReg::U8 => self.u8,
         }
     }
-    pub fn set_reg(&mut self, reg: Reg, val: RegType) {
+    pub fn get_mut_u_reg(&mut self, reg: UsizeReg) -> &mut UsizeRegType {
         match reg {
-            Reg::R1 => self.r1 = val,
-            Reg::R2 => self.r2 = val,
-            Reg::R3 => self.r3 = val,
-            Reg::R4 => self.r4 = val,
-            Reg::R5 => self.r5 = val,
-            Reg::R6 => self.r6 = val,
-            Reg::R7 => self.r7 = val,
-            Reg::R8 => self.r8 = val,
-            Reg::R9 => self.r9 = val,
-            Reg::R10 => self.r10 = val,
-            Reg::R11 => self.r11 = val,
-            Reg::R12 => self.r12 = val,
-            Reg::R13 => self.r13 = val,
-            Reg::R14 => self.r14 = val,
-            Reg::R15 => self.r15 = val,
-            Reg::R16 => self.r16 = val,
+            UsizeReg::U1 => &mut self.u1,
+            UsizeReg::U2 => &mut self.u2,
+            UsizeReg::U3 => &mut self.u3,
+            UsizeReg::U4 => &mut self.u4,
+            UsizeReg::U5 => &mut self.u5,
+            UsizeReg::U6 => &mut self.u6,
+            UsizeReg::U7 => &mut self.u7,
+            UsizeReg::U8 => &mut self.u8,
+        }
+    }
+    pub fn set_u_reg(&mut self, reg: UsizeReg, val: UsizeRegType) {
+        match reg {
+            UsizeReg::U1 => self.u1 = val,
+            UsizeReg::U2 => self.u2 = val,
+            UsizeReg::U3 => self.u3 = val,
+            UsizeReg::U4 => self.u4 = val,
+            UsizeReg::U5 => self.u5 = val,
+            UsizeReg::U6 => self.u6 = val,
+            UsizeReg::U7 => self.u7 = val,
+            UsizeReg::U8 => self.u8 = val,
+        }
+    }
+    pub fn get_f_reg(&self, reg: F64Reg) -> F64RegType {
+        match reg {
+            F64Reg::F1 => self.f1,
+            F64Reg::F2 => self.f2,
+            F64Reg::F3 => self.f3,
+            F64Reg::F4 => self.f4,
+            F64Reg::F5 => self.f5,
+            F64Reg::F6 => self.f6,
+            F64Reg::F7 => self.f7,
+            F64Reg::F8 => self.f8,
+        }
+    }
+    pub fn get_mut_f_reg(&mut self, reg: F64Reg) -> &mut F64RegType {
+        match reg {
+            F64Reg::F1 => &mut self.f1,
+            F64Reg::F2 => &mut self.f2,
+            F64Reg::F3 => &mut self.f3,
+            F64Reg::F4 => &mut self.f4,
+            F64Reg::F5 => &mut self.f5,
+            F64Reg::F6 => &mut self.f6,
+            F64Reg::F7 => &mut self.f7,
+            F64Reg::F8 => &mut self.f8,
+        }
+    }
+    pub fn set_f_reg(&mut self, reg: F64Reg, val: F64RegType) {
+        match reg {
+            F64Reg::F1 => self.f1 = val,
+            F64Reg::F2 => self.f2 = val,
+            F64Reg::F3 => self.f3 = val,
+            F64Reg::F4 => self.f4 = val,
+            F64Reg::F5 => self.f5 = val,
+            F64Reg::F6 => self.f6 = val,
+            F64Reg::F7 => self.f7 = val,
+            F64Reg::F8 => self.f8 = val,
         }
     }
     pub fn get_bp(&self) -> StackAddr {
@@ -475,5 +460,25 @@ impl Regs {
     }
     pub fn set_pc(&mut self, pc: CodeAddr) {
         self.pc = pc;
+    }
+    pub fn reset(&mut self) {
+        self.u1 = 0;
+        self.u2 = 0;
+        self.u3 = 0;
+        self.u4 = 0;
+        self.u5 = 0;
+        self.u6 = 0;
+        self.u7 = 0;
+        self.u8 = 0;
+        self.f1 = 0.0;
+        self.f2 = 0.0;
+        self.f3 = 0.0;
+        self.f4 = 0.0;
+        self.f5 = 0.0;
+        self.f6 = 0.0;
+        self.f7 = 0.0;
+        self.f8 = 0.0;
+        self.pc = 0;
+        self.bp = 0;
     }
 }

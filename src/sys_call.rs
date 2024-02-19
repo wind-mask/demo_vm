@@ -13,6 +13,7 @@ pub enum SysCallErr {
     InvalidSysCall,
     InvalidSysCallArg,
     WriteErr(write::WriteErr),
+    ISAErr(ISAErr),
 }
 impl From<SysCallErr> for ISAErr {
     fn from(err: SysCallErr) -> ISAErr {
@@ -21,6 +22,11 @@ impl From<SysCallErr> for ISAErr {
             SysCallErr::InvalidSysCallArg => ISAErr::InvalidSysCallArg,
             _ => ISAErr::SysCallErr,
         }
+    }
+}
+impl From<ISAErr> for SysCallErr {
+    fn from(err: ISAErr) -> SysCallErr {
+        SysCallErr::ISAErr(err)
     }
 }
 type SysCall = fn(&mut CpuCore, &mut Memory) -> Result<(), SysCallErr>;

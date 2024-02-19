@@ -2,7 +2,9 @@ pub mod heap;
 pub mod stack;
 
 use demo_isa::err::{CpuErr, ISAErr};
-use demo_isa::{HeapObjRuner, Inst, MemoryRuner, RegType, StackAddr};
+use demo_isa::{Inst, MemoryRuner, RegType, StackAddr};
+
+use self::heap::HeapObj;
 
 #[derive(Debug)]
 pub struct Memory {
@@ -48,6 +50,11 @@ impl Memory {
             self.stack_segment.clone(),
         )
     }
+    pub fn reset(&mut self) {
+        self.code_segment.clear();
+        self.heap_segment.clear();
+        self.stack_segment.clear();
+    }
 }
 
 impl MemoryRuner for Memory {
@@ -61,26 +68,6 @@ impl MemoryRuner for Memory {
 
     fn clear_code(&mut self) {
         self.code_segment.clear();
-    }
-
-    fn get_heap(&mut self, addr: usize) -> RegType {
-        if let Some(obj) = self.heap_segment.get(addr) {
-            obj.get_reg_type()
-        } else {
-            self.heap_segment
-                .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
-            RegType::Usize(0)
-        }
-    }
-
-    fn set_heap(&mut self, addr: usize, val: RegType) {
-        if let Some(obj) = self.heap_segment.get_mut(addr) {
-            obj.set_reg_type(val);
-        } else {
-            self.heap_segment
-                .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
-            self.heap_segment[addr] = HeapObj::R(val);
-        }
     }
 
     fn get_stack(&self, bp: StackAddr, addr: StackAddr) -> Result<RegType, ISAErr> {
@@ -135,11 +122,52 @@ impl MemoryRuner for Memory {
     fn push_stack_vec(&mut self, stack: Vec<RegType>) {
         self.stack_segment.extend(stack);
     }
+
+    fn get_heap_u_type(
+        &mut self,
+        addr: demo_isa::reg::UsizeRegType,
+    ) -> Result<demo_isa::reg::UsizeRegType, ISAErr> {
+        if let Some(h) = self.heap_segment.get(addr) {
+            h.get_reg_u_type()
+        } else {
+            self.heap_segment
+                .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
+            Ok(0)
+        }
+    }
+
+    fn get_heap_f_type(
+        &mut self,
+        addr: demo_isa::reg::UsizeRegType,
+    ) -> Result<demo_isa::reg::F64RegType, ISAErr> {
+        if let Some(h) = self.heap_segment.get(addr) {
+            h.get_reg_f_type()
+        } else {
+            self.heap_segment
+                .resize(addr + 1, HeapObj::R(RegType::F64(0.0)));
+            Ok(0.0)
+        }
+    }
+
+    fn set_heap(&mut self, addr: demo_isa::reg::UsizeRegType, val: RegType) {
+        if let Some(h) = self.heap_segment.get_mut(addr) {
+            *h = HeapObj::R(val);
+        } else {
+            self.heap_segment
+                .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
+            self.heap_segment[addr] = HeapObj::R(val);
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum HeapObj {
-    R(RegType),
+impl Memory {
+    pub fn get_heap_obj(&mut self, addr: demo_isa::reg::UsizeRegType) -> &HeapObj {
+        if addr >= self.heap_segment.len() {
+            self.heap_segment
+                .resize(addr + 1, HeapObj::R(RegType::Usize(0)));
+        }
+        &self.heap_segment[addr]
+    }
 }
 
 // pub type HeapAddr = usize;

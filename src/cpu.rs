@@ -11,7 +11,7 @@ use log::debug;
 
 #[derive(Debug)]
 pub struct CpuCore {
-    pub regs: Regs,
+    regs: Regs,
     pub flags: BitFlags<Flags>,
 }
 impl Default for CpuCore {
@@ -41,5 +41,11 @@ impl CpuCore {
             self.regs.set_pc(pc + 1);
             self.run_inst(inst, mem)?;
         }
+    }
+    pub fn reset(&mut self) {
+        self.regs.reset();
+        self.flags = make_bitflags!(Flags::{}); // clear all flags
+        self.set_bp(0);
+        self.set_pc(0);
     }
 }
