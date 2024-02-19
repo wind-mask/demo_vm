@@ -1,11 +1,15 @@
 use crate::cpu::CpuCore;
+use crate::memory::Memory;
+use crate::sys_call::SYS_CALL_TABLE;
+
 use demo_isa::err::ISAErr;
 use demo_isa::reg::{Flags, Reg};
 use demo_isa::{CodeAddr, ISARuner, Inst, MemoryRuner, RegType, StackAddr};
 use enumflags2::{make_bitflags, BitFlags};
 
 impl ISARuner for CpuCore {
-    fn run_inst(&mut self, inst: Inst, mem: &mut impl MemoryRuner) -> Result<(), ISAErr> {
+    type M = Memory;
+    fn run_inst(&mut self, inst: Inst, mem: &mut Self::M) -> Result<(), ISAErr> {
         run(self, inst, mem)
     }
     fn get_reg(&self, reg: Reg) -> RegType {
@@ -33,12 +37,8 @@ impl ISARuner for CpuCore {
         self.flags = flags;
     }
 }
-
-pub(crate) fn run(
-    core: &mut impl ISARuner,
-    inst: Inst,
-    memory: &mut impl MemoryRuner,
-) -> Result<(), ISAErr> {
+//TODO:寄存器类型优化
+pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result<(), ISAErr> {
     match inst {
         Inst::Nop => {}
         Inst::M(reg, i) => core.set_reg(reg, i),
@@ -355,6 +355,19 @@ pub(crate) fn run(
             }
         }
         Inst::Halt => return Err(ISAErr::Halt),
+        Inst::SysCall(reg) => {
+            if let RegType::Usize(sys_call) = core.get_reg(reg) {
+                if let Some(sys_call) = SYS_CALL_TABLE.get(sys_call) {
+                    sys_call(core, memory)?;
+                } else {
+                    return Err(ISAErr::InvalidSysCall);
+                }
+            } else {
+                return Err(ISAErr::InvalidReg);
+            }
+        }
+        Inst::In(_, _) => todo!(),  //TODO:实现In
+        Inst::Out(_, _) => todo!(), //TODO:实现Out
     }
     Ok(())
 }

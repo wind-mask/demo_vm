@@ -123,8 +123,8 @@ impl MemoryRuner for Memory {
         self.stack_segment.truncate(bp + 1);
     }
     fn fetch_code(&self, addr: demo_isa::CodeAddr) -> Result<Inst, CpuErr> {
-        if addr < self.code_segment.len() {
-            Ok(self.code_segment[addr])
+        if let Some(inst) = self.code_segment.get(addr) {
+            Ok(*inst)
         } else {
             Err(CpuErr::InvalidCodeAddr)
         }

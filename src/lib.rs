@@ -7,6 +7,7 @@ use memory::{Heap, HeapObj};
 
 pub mod cpu;
 pub mod memory;
+pub mod sys_call;
 
 #[derive(Debug)]
 pub struct Vm {

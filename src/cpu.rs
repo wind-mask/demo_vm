@@ -35,6 +35,8 @@ impl CpuCore {
             {
                 debug!("pc: {:?}, inst: {:?}", pc, inst);
                 debug!("regs: {:?}", self.regs);
+                debug!("flags: {:?}", self.flags);
+                debug!("stack: {:?}", mem.load().2);
             }
             self.regs.set_pc(pc + 1);
             self.run_inst(inst, mem)?;
