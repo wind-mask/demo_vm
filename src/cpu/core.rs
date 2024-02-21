@@ -4,43 +4,42 @@ use crate::sys_call::SYS_CALL_TABLE;
 
 use demo_isa::err::ISAErr;
 use demo_isa::reg::{F64Reg, F64RegType, Flags, UsizeReg, UsizeRegType};
-use demo_isa::{CodeAddr, ISARuner, Inst, MemoryRuner, RegType, StackAddr};
+use demo_isa::{Inst, RegType};
 use enumflags2::{make_bitflags, BitFlags};
 
-impl ISARuner for CpuCore {
-    type M = Memory;
-    fn run_inst(&mut self, inst: Inst, mem: &mut Self::M) -> Result<(), ISAErr> {
+impl CpuCore {
+    pub fn run_inst(&mut self, inst: &Inst, mem: &mut Memory) -> Result<(), ISAErr> {
         run(self, inst, mem)
     }
-    fn get_u_reg(&self, ur: UsizeReg) -> UsizeRegType {
+    pub fn get_u_reg(&self, ur: UsizeReg) -> UsizeRegType {
         self.regs.get_u_reg(ur)
     }
     fn get_mut_u_reg(&mut self, reg: UsizeReg) -> &mut UsizeRegType {
         self.regs.get_mut_u_reg(reg)
     }
-    fn get_f_reg(&self, fr: F64Reg) -> F64RegType {
+    pub fn get_f_reg(&self, fr: F64Reg) -> F64RegType {
         self.regs.get_f_reg(fr)
     }
     fn get_mut_f_reg(&mut self, reg: F64Reg) -> &mut F64RegType {
         self.regs.get_mut_f_reg(reg)
     }
-    fn set_u_reg(&mut self, ur: UsizeReg, val: UsizeRegType) {
+    pub fn set_u_reg(&mut self, ur: UsizeReg, val: UsizeRegType) {
         self.regs.set_u_reg(ur, val);
     }
     fn set_f_reg(&mut self, fr: F64Reg, val: F64RegType) {
         self.regs.set_f_reg(fr, val);
     }
 
-    fn get_pc(&self) -> CodeAddr {
+    pub fn get_pc(&self) -> UsizeRegType {
         self.regs.get_pc()
     }
-    fn set_pc(&mut self, pc: CodeAddr) {
+    pub fn set_pc(&mut self, pc: UsizeRegType) {
         self.regs.set_pc(pc);
     }
-    fn get_bp(&self) -> StackAddr {
+    fn get_bp(&self) -> UsizeRegType {
         self.regs.get_bp()
     }
-    fn set_bp(&mut self, bp: StackAddr) {
+    pub fn set_bp(&mut self, bp: UsizeRegType) {
         self.regs.set_bp(bp);
     }
     fn get_flags(&self) -> BitFlags<Flags> {
@@ -50,13 +49,19 @@ impl ISARuner for CpuCore {
         self.flags = flags;
     }
 }
-pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result<(), ISAErr> {
-    match inst {
+pub(crate) fn run(core: &mut CpuCore, inst: &Inst, memory: &mut Memory) -> Result<(), ISAErr> {
+    match *inst {
         Inst::Nop => {}
         Inst::MU(reg, val) => core.set_u_reg(reg, val),
         Inst::MD(reg, val) => core.set_f_reg(reg, val),
-        Inst::MovU(dr, sr) => core.set_u_reg(dr, core.get_u_reg(sr)),
-        Inst::MovD(dr, sr) => core.set_f_reg(dr, core.get_f_reg(sr)),
+        Inst::MovU(dr, sr) => {
+            let val = core.get_u_reg(sr);
+            core.set_u_reg(dr, val)
+        }
+        Inst::MovD(dr, sr) => {
+            let v = core.get_f_reg(sr);
+            core.set_f_reg(dr, v)
+        }
         Inst::Mod(dur, sur1, sur2) => {
             let r1 = core.get_u_reg(sur1);
             let r2 = core.get_u_reg(sur2);
@@ -195,49 +200,59 @@ pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result
             core.set_f_reg(reg_v, memory.get_heap_f_type(core.get_u_reg(reg_a))?)
         }
         Inst::StoreUH(reg_v, reg_a) => {
-            memory.set_heap(core.get_u_reg(reg_a), RegType::Usize(core.get_u_reg(reg_v)));
+            memory.set_heap(
+                core.get_u_reg(reg_a),
+                &RegType::Usize(core.get_u_reg(reg_v)),
+            );
         }
         Inst::StoreDH(reg_v, reg_a) => {
-            memory.set_heap(core.get_u_reg(reg_a), RegType::F64(core.get_f_reg(reg_v)));
+            memory.set_heap(core.get_u_reg(reg_a), &RegType::F64(core.get_f_reg(reg_v)));
         }
         Inst::Jo(addr_reg) => {
             if core.get_flags().contains(Flags::Overflow) {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Jno(addr_reg) => {
             if !core.get_flags().contains(Flags::Overflow) {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Je(addr_reg, vreg1, vreg2) => {
             let val1 = core.get_u_reg(vreg1);
             let val2 = core.get_u_reg(vreg2);
             if val1 == val2 {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Jne(addr_reg, vreg1, vreg2) => {
             let val1 = core.get_u_reg(vreg1);
             let val2 = core.get_u_reg(vreg2);
             if val1 != val2 {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Jz(addr_reg, vreg) => {
             let val = core.get_u_reg(vreg);
             if val == 0 {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Jnz(addr_reg, vreg) => {
             let val = core.get_u_reg(vreg);
             if val != 0 {
-                core.set_pc(core.get_u_reg(addr_reg))
+                let v = core.get_u_reg(addr_reg);
+                core.set_pc(v)
             }
         }
         Inst::Jmp(reg) => {
-            core.set_pc(core.get_u_reg(reg));
+            let v = core.get_u_reg(reg);
+            core.set_pc(v);
         }
         Inst::PushU(ureg) => {
             memory.push_stack(RegType::Usize(core.get_u_reg(ureg)));
@@ -266,7 +281,7 @@ pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result
             memory.push_stack(RegType::Usize(core.get_bp()));
             memory.push_stack(RegType::Usize(core.get_pc()));
             core.set_bp(memory.get_stack_top_addr());
-            core.set_pc(addr as CodeAddr);
+            core.set_pc(addr);
         }
         Inst::Ret => {
             memory.drop_stack_bp(core.get_bp());
@@ -274,8 +289,8 @@ pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result
             let bp = memory.pop_stack()?;
             match (pc, bp) {
                 (RegType::Usize(pc), RegType::Usize(bp)) => {
-                    core.set_pc(pc as CodeAddr);
-                    core.set_bp(bp as StackAddr);
+                    core.set_pc(pc);
+                    core.set_bp(bp);
                 }
                 _ => return Err(ISAErr::TypeMismatch),
             }
@@ -326,37 +341,37 @@ pub(crate) fn run(core: &mut CpuCore, inst: Inst, memory: &mut Memory) -> Result
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Regs {
-    u1: UsizeRegType,
-    u2: UsizeRegType,
-    u3: UsizeRegType,
-    u4: UsizeRegType,
-    u5: UsizeRegType,
-    u6: UsizeRegType,
-    u7: UsizeRegType,
-    u8: UsizeRegType,
-    f1: F64RegType,
-    f2: F64RegType,
-    f3: F64RegType,
-    f4: F64RegType,
-    f5: F64RegType,
-    f6: F64RegType,
-    f7: F64RegType,
-    f8: F64RegType,
-    pc: CodeAddr,
-    bp: StackAddr,
+#[derive(Debug)]
+pub struct RegsTmp {
+    pub u1: UsizeRegType,
+    pub u2: UsizeRegType,
+    pub u3: UsizeRegType,
+    pub u4: UsizeRegType,
+    pub u5: UsizeRegType,
+    pub u6: UsizeRegType,
+    pub u7: UsizeRegType,
+    pub u8: UsizeRegType,
+    pub f1: F64RegType,
+    pub f2: F64RegType,
+    pub f3: F64RegType,
+    pub f4: F64RegType,
+    pub f5: F64RegType,
+    pub f6: F64RegType,
+    pub f7: F64RegType,
+    pub f8: F64RegType,
+    pub pc: UsizeRegType,
+    pub bp: UsizeRegType,
 }
 
-impl Default for Regs {
+impl Default for RegsTmp {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Regs {
+impl RegsTmp {
     pub fn new() -> Self {
-        Regs {
+        RegsTmp {
             u1: 0,
             u2: 0,
             u3: 0,
@@ -449,16 +464,16 @@ impl Regs {
             F64Reg::F8 => self.f8 = val,
         }
     }
-    pub fn get_bp(&self) -> StackAddr {
+    pub fn get_bp(&self) -> UsizeRegType {
         self.bp
     }
-    pub fn set_bp(&mut self, bp: StackAddr) {
+    pub fn set_bp(&mut self, bp: UsizeRegType) {
         self.bp = bp;
     }
-    pub fn get_pc(&self) -> CodeAddr {
+    pub fn get_pc(&self) -> UsizeRegType {
         self.pc
     }
-    pub fn set_pc(&mut self, pc: CodeAddr) {
+    pub fn set_pc(&mut self, pc: UsizeRegType) {
         self.pc = pc;
     }
     pub fn reset(&mut self) {
@@ -478,6 +493,74 @@ impl Regs {
         self.f6 = 0.0;
         self.f7 = 0.0;
         self.f8 = 0.0;
+        self.pc = 0;
+        self.bp = 0;
+    }
+}
+
+#[derive(Debug)]
+pub struct Regs {
+    usize_regs: [UsizeRegType; 8],
+    f64_regs: [F64RegType; 8],
+    pc: UsizeRegType,
+    bp: UsizeRegType,
+}
+impl Default for Regs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Regs {
+    pub fn new() -> Self {
+        Regs {
+            usize_regs: [0; 8],
+            f64_regs: [0.0; 8],
+            pc: 0,
+            bp: 0,
+        }
+    }
+    pub fn get_u_reg(&self, reg: UsizeReg) -> UsizeRegType {
+        // assert!(self.usize_regs.len()>reg as usize);
+        self.usize_regs[reg as usize]
+    }
+    pub fn get_mut_u_reg(&mut self, reg: UsizeReg) -> &mut UsizeRegType {
+        // assert!(self.usize_regs.len()>reg as usize);
+
+        &mut self.usize_regs[reg as usize]
+    }
+    pub fn set_u_reg(&mut self, reg: UsizeReg, val: UsizeRegType) {
+        // assert!(self.usize_regs.len()>reg as usize);
+        self.usize_regs[reg as usize] = val;
+    }
+    pub fn get_f_reg(&self, reg: F64Reg) -> F64RegType {
+        // assert!(self.f64_regs.len()>reg as usize);
+
+        self.f64_regs[reg as usize]
+    }
+    pub fn get_mut_f_reg(&mut self, reg: F64Reg) -> &mut F64RegType {
+        // assert!(self.f64_regs.len()>reg as usize);
+        &mut self.f64_regs[reg as usize]
+    }
+    pub fn set_f_reg(&mut self, reg: F64Reg, val: F64RegType) {
+        // assert!(self.f64_regs.len()>reg as usize);
+
+        self.f64_regs[reg as usize] = val;
+    }
+    pub fn get_bp(&self) -> UsizeRegType {
+        self.bp
+    }
+    pub fn set_bp(&mut self, bp: UsizeRegType) {
+        self.bp = bp;
+    }
+    pub fn get_pc(&self) -> UsizeRegType {
+        self.pc
+    }
+    pub fn set_pc(&mut self, pc: UsizeRegType) {
+        self.pc = pc;
+    }
+    pub fn reset(&mut self) {
+        self.usize_regs = [0; 8];
+        self.f64_regs = [0.0; 8];
         self.pc = 0;
         self.bp = 0;
     }

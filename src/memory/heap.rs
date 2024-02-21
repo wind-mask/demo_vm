@@ -1,6 +1,6 @@
 use std::mem;
 
-use demo_isa::{reg::UsizeRegType, HeapObjRuner, RegType};
+use demo_isa::{reg::UsizeRegType, RegType};
 
 #[derive(Debug, Clone)]
 pub enum HeapObj {
@@ -9,25 +9,25 @@ pub enum HeapObj {
     FArray(Vec<f64>),
 }
 
-impl HeapObjRuner for HeapObj {
-    fn get_reg_type(&self) -> Result<RegType, demo_isa::err::ISAErr> {
-        match self {
-            HeapObj::R(r) => Ok(*r),
-            HeapObj::UArray(u) => {
-                if u.is_empty() {
-                    return Err(demo_isa::err::ISAErr::InvalidHeapType);
-                }
-                Ok(RegType::Usize(u[0]))
-            }
-            Self::FArray(f) => {
-                if f.is_empty() {
-                    return Err(demo_isa::err::ISAErr::InvalidHeapType);
-                }
-                Ok(RegType::F64(f[0]))
-            }
-        }
-    }
-    fn get_u8_vec(&self) -> &[u8] {
+impl HeapObj {
+    // fn get_reg_type(&self) -> Result<RegType, demo_isa::err::ISAErr> {
+    //     match self {
+    //         HeapObj::R(r) => Ok(*r),
+    //         HeapObj::UArray(u) => {
+    //             if u.is_empty() {
+    //                 return Err(demo_isa::err::ISAErr::InvalidHeapType);
+    //             }
+    //             Ok(RegType::Usize(u[0]))
+    //         }
+    //         Self::FArray(f) => {
+    //             if f.is_empty() {
+    //                 return Err(demo_isa::err::ISAErr::InvalidHeapType);
+    //             }
+    //             Ok(RegType::F64(f[0]))
+    //         }
+    //     }
+    // }
+    pub fn get_u8_vec(&self) -> &[u8] {
         match self {
             Self::R(RegType::Usize(u)) => unsafe {
                 std::slice::from_raw_parts(
@@ -86,8 +86,8 @@ fn test_get_u8_vec() {
     // 测试对于usize数组的正确性
     for _ in 0..100 {
         let mut rand_len: usize = random();
-        rand_len += 1;
         rand_len = rand_len % 1000;
+        rand_len += 1;
         let mut u_array = Vec::with_capacity(rand_len);
         for _ in 0..rand_len {
             u_array.push(random());
@@ -106,8 +106,8 @@ fn test_get_u8_vec() {
     // 测试对于f64数组的正确性
     for _ in 0..100 {
         let mut rand_len: usize = random();
-        rand_len += 1;
         rand_len = rand_len % 1000;
+        rand_len += 1;
         let mut f_array = Vec::with_capacity(rand_len);
         for _ in 0..rand_len {
             f_array.push(random());
@@ -124,26 +124,26 @@ fn test_get_u8_vec() {
     }
 }
 impl HeapObj {
-    pub fn get_reg_u_type(&self) -> Result<demo_isa::reg::UsizeRegType, demo_isa::err::ISAErr> {
+    pub fn get_reg_u_type(&self) -> Result<&demo_isa::reg::UsizeRegType, demo_isa::err::ISAErr> {
         match self {
-            HeapObj::R(RegType::Usize(u)) => Ok(*u),
+            HeapObj::R(RegType::Usize(u)) => Ok(u),
             HeapObj::UArray(u) => {
                 if u.is_empty() {
                     return Err(demo_isa::err::ISAErr::InvalidHeapType);
                 }
-                Ok(u[0])
+                Ok(&u[0])
             }
             _ => Err(demo_isa::err::ISAErr::InvalidHeapType),
         }
     }
-    pub fn get_reg_f_type(&self) -> Result<demo_isa::reg::F64RegType, demo_isa::err::ISAErr> {
+    pub fn get_reg_f_type(&self) -> Result<&demo_isa::reg::F64RegType, demo_isa::err::ISAErr> {
         match self {
-            HeapObj::R(RegType::F64(f)) => Ok(*f),
+            HeapObj::R(RegType::F64(f)) => Ok(f),
             HeapObj::FArray(f) => {
                 if f.is_empty() {
                     return Err(demo_isa::err::ISAErr::InvalidHeapType);
                 }
-                Ok(f[0])
+                Ok(&f[0])
             }
             _ => Err(demo_isa::err::ISAErr::InvalidHeapType),
         }

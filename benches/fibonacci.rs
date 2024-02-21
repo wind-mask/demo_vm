@@ -1,6 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use demo_vm::test::{fibonacci, vm_fibonacci};
 
+// use mimalloc::MiMalloc;
+
+// #[global_allocator]
+// static GLOBAL: MiMalloc = MiMalloc;
 criterion_group!(benches, bench_fibonacci, bench_vm_fibonacci);
 criterion_main!(benches);
 

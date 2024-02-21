@@ -1,26 +1,27 @@
 //! 测试的模块，编译去除
+use criterion::black_box;
 use demo_isa::{
-    err::{CpuErr, ISAErr},
-    reg::{F64Reg, UsizeReg},
-    ISARuner, Inst,
+    err::ISAErr,
+    reg::{F64Reg, F64RegType, UsizeReg, UsizeRegType},
+    Inst,
 };
 use log::debug;
 
-use crate::Vm;
+use crate::{cpu::CpuErr, memory::MemoryErr, VmTmp, VmErr};
 
-impl Vm {
-    pub fn get_pc(&self) -> usize {
+impl VmTmp {
+    pub fn get_pc(&self) -> UsizeRegType {
         self.core.get_pc()
     }
-    pub fn get_u_reg(&self, reg: UsizeReg) -> usize {
+    pub fn get_u_reg(&self, reg: UsizeReg) -> UsizeRegType {
         self.core.get_u_reg(reg)
     }
-    pub fn get_f_reg(&self, reg: F64Reg) -> f64 {
+    pub fn get_f_reg(&self, reg: F64Reg) -> F64RegType {
         self.core.get_f_reg(reg)
     }
 }
 pub fn vm_fibonacci(n: usize) -> usize {
-    let mut vm = Vm::new();
+    let mut vm = VmTmp::new();
     let code = vec![
         Inst::MU(UsizeReg::U8, 4),
         Inst::MU(UsizeReg::U1, n),
@@ -50,13 +51,13 @@ pub fn vm_fibonacci(n: usize) -> usize {
     vm.set_code(code);
     match vm.start() {
         Ok(_) => {}
-        Err(CpuErr::ISAErr(ISAErr::Halt)) => {
+        Err(VmErr::CpuErr(CpuErr::ISAErr(ISAErr::Halt))) => {
             debug!("Halt")
         }
-        Err(CpuErr::InvalidCodeAddr) => {
+        Err(VmErr::CpuErr(CpuErr::MemoryErr(MemoryErr::InvalidCodeAddr))) => {
             panic!("InvalidCodeAddr")
         }
-        Err(CpuErr::ISAErr(e)) => {
+        Err(e) => {
             panic!("ISAErr: {:?}", e)
         }
     }
@@ -77,5 +78,5 @@ pub fn fibonacci(n: usize) -> usize {
     if n == 1 {
         return 1;
     }
-    fibonacci(n - 1) + fibonacci(n - 2)
+    black_box(fibonacci(n - 1)) + black_box(fibonacci(n - 2))
 }

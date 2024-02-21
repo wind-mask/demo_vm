@@ -1,13 +1,12 @@
-use demo_isa::{err::ISAErr, ISARuner};
+
+use demo_isa::err::ISAErr;
 
 use crate::{cpu::CpuCore, memory::Memory};
 
 use self::write::write_std;
 
 mod write;
-pub trait ISARunerExSysCall: ISARuner {
-    fn run_sys_call(&mut self, mem: &mut Memory) -> Result<(), SysCallErr>;
-}
+
 #[derive(Debug)]
 pub enum SysCallErr {
     InvalidSysCall,

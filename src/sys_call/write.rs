@@ -6,7 +6,6 @@ use crate::memory::Memory;
 
 use super::SysCallErr;
 
-use demo_isa::{HeapObjRuner, ISARuner};
 #[derive(Debug)]
 pub enum WriteErr {
     UTF8Err(std::str::Utf8Error),
@@ -36,12 +35,11 @@ impl From<WriteErr> for SysCallErr {
 /// 返回值：
 ///     U4: 0表示成功，其他表示失败
 ///     U5: 写入的字符数
-#[allow(unused)]
 pub fn write_std(core: &mut CpuCore, mem: &mut Memory) -> Result<(), SysCallErr> {
     let addr = core.get_u_reg(demo_isa::reg::UsizeReg::U2);
     let len = core.get_u_reg(demo_isa::reg::UsizeReg::U3);
     let mut buf = Vec::with_capacity(len);
-    for i in 0..len {
+    for _ in 0..len {
         let c = mem.get_heap_obj(addr).get_u8_vec();
         buf.extend_from_slice(c);
     }
